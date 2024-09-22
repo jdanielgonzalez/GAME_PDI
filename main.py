@@ -14,6 +14,11 @@ from game import (
     Enemy  # Importar la clase Enemy
 )
 
+def create_mask(ycrcb):
+    lower_ycrcb = np.array([0, 170, 0])  # Ajusta los valores según sea necesario
+    upper_ycrcb = np.array([255, 240, 255])  # Ajusta los valores según sea necesario
+    return cv2.inRange(ycrcb, lower_ycrcb, upper_ycrcb)
+
 def main():
     desired_size = (960, 540)
     background = load_background('sea (1).jpg', desired_size)
@@ -30,7 +35,7 @@ def main():
         objects.append(GameObject(cv2.imread('medusa.png', cv2.IMREAD_UNCHANGED), pos, speed))
 
     enemies = []
-    for _ in range(6):  # Crear 8 enemigos estáticos
+    for _ in range(1):  # Crear 12 enemigos estáticos
         pos = [np.random.randint(0, desired_size[0] - 50), np.random.randint(0, desired_size[1] - 50)]
         enemies.append(Enemy(enemy_image, pos))
 
@@ -43,29 +48,31 @@ def main():
             break
 
         frame_resized = cv2.resize(frame, desired_size)
-        hsv = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2HSV)
+        ycrcb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2YCrCb)  # Cambiar a YCrCb
 
-        mask = create_mask(hsv)
+        mask = create_mask(ycrcb)  # Crear máscara en el espacio YCrCb
         cleaned_mask = clean_mask(mask, kernel)
         binary_mask = binarize_mask(cleaned_mask)
 
         contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         combined = background.copy()
+        
+        center = None
+        if contours:
+            c = max(contours, key=cv2.contourArea)
+            (x, y), radius = cv2.minEnclosingCircle(c)
+            center = (int(x), int(y))
 
         # Mover y dibujar las medusas
         for obj in objects:
-            obj.move(desired_size)
+            obj.move(desired_size, turtle_pos=center)  # Pasar la posición de la tortuga
             combined = overlay_medusa(combined, obj)
-
             # Verificar si la medusa ha sido capturada
-            if contours:
-                for c in contours:
-                    (x, y), radius = cv2.minEnclosingCircle(c)
-                    center = (int(x), int(y))
-                    if obj.is_caught(center, radius):  # Comprobar captura
-                        print("Medusa capturada!")
-                        break  # Salir si se captura la medusa
+            if center is not None:  # Asegurarse de que center está definido
+                if obj.is_caught(center, radius):  # Comprobar captura
+                    print("Medusa capturada!")
+                    obj.caught = True  # Marcar la medusa como capturada
 
         # Dibujar enemigos y comprobar colisiones
         for enemy in enemies:
